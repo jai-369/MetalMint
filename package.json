@@ -1,0 +1,21 @@
+{
+  "name": "factorytrack",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Self-hosted internal manufacturing tracking web app foundation.",
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "concurrently -n backend,frontend -c blue,green \"npm run dev --workspace backend\" \"npm run dev --workspace frontend\"",
+    "dev:backend": "npm run dev --workspace backend",
+    "dev:frontend": "npm run dev --workspace frontend",
+    "build": "npm run build --workspace frontend",
+    "create-admin": "npm run create-admin --workspace backend",
+    "start": "npm run start --workspace backend"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

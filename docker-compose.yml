@@ -1,0 +1,49 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: factorytrack-backend
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      PORT: 4000
+      NODE_ENV: production
+      CORS_ORIGIN: "${CORS_ORIGIN:-http://localhost:5173}"
+      JWT_SECRET: "${JWT_SECRET:-change-this-in-development}"
+      BCRYPT_SALT_ROUNDS: "${BCRYPT_SALT_ROUNDS:-12}"
+      AUTH_COOKIE_SECURE: "${AUTH_COOKIE_SECURE:-false}"
+      PRODUCT_CODE_PREFIX: "${PRODUCT_CODE_PREFIX:-FT}"
+      APP_PUBLIC_URL: "${APP_PUBLIC_URL:-http://localhost:5173}"
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-factorytrack}:${POSTGRES_PASSWORD:-factorytrack}@postgres:5432/${POSTGRES_DB:-factorytrack}"
+    ports:
+      - "4000:4000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: "${VITE_API_BASE_URL:-http://localhost:4000}"
+    container_name: factorytrack-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: factorytrack-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:-factorytrack}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-factorytrack}"
+      POSTGRES_DB: "${POSTGRES_DB:-factorytrack}"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database:/docker-entrypoint-initdb.d:ro
+
+volumes:
+  postgres_data:
