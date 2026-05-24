@@ -1,4 +1,9 @@
 services:
+  backend:
+    networks:
+      - default
+      - proxy
+
   frontend:
     networks:
       - default
