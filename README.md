@@ -195,6 +195,28 @@ Reset Docker database volume:
 docker compose down -v
 ```
 
+## Reverse Proxy Deployment
+
+If you are serving MetalMint through Nginx Proxy Manager on the VPS, keep the app on the proxy's Docker network so the proxy container can resolve `metalmint-frontend`.
+
+The shared proxy network is usually `proxy_default`. Confirm it on the VPS with:
+
+```bash
+docker network ls
+```
+
+Then deploy with the proxy override:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d --build
+```
+
+If the proxy network has a different name, set it explicitly:
+
+```bash
+PROXY_NETWORK=your_proxy_network docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d --build
+```
+
 ## Main API Routes
 
 ```text
