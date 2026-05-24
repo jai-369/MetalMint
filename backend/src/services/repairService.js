@@ -1,5 +1,6 @@
 import { pool } from "../db/pool.js";
 import { badRequest, notFound } from "../utils/httpError.js";
+import { CODE_SCOPES, reserveDailyCode } from "../utils/shortCode.js";
 
 function normalizeOptionalString(value) {
   if (value === undefined) {
@@ -7,12 +8,6 @@ function normalizeOptionalString(value) {
   }
 
   return value?.trim() || null;
-}
-
-function buildServiceInvoiceNumber() {
-  const stamp = new Date().toISOString().slice(2, 10).replaceAll("-", "");
-  const suffix = Math.random().toString(36).slice(2, 7).toUpperCase();
-  return `MM-SVC-${stamp}-${suffix}`;
 }
 
 export async function listRepairJobs(filters = {}) {
@@ -65,10 +60,15 @@ export async function getRepairJobById(id) {
 }
 
 export async function createRepairJob(input, userId) {
-  const invoiceNumber = buildServiceInvoiceNumber();
+  const client = await pool.connect();
 
   try {
-    const result = await pool.query(
+    await client.query("BEGIN");
+    const invoiceNumber = await reserveDailyCode(client, {
+      scope: CODE_SCOPES.REPAIR_INVOICE,
+      dateValue: input.service_start_date || new Date(),
+    });
+    const result = await client.query(
       `
         INSERT INTO repair_jobs (
           service_invoice_number,
@@ -115,13 +115,18 @@ export async function createRepairJob(input, userId) {
       ]
     );
 
+    await client.query("COMMIT");
     return getRepairJobById(result.rows[0].id);
   } catch (error) {
+    await client.query("ROLLBACK");
+
     if (error.code === "23505") {
       throw badRequest("Service invoice number conflict. Please try again.");
     }
 
     throw error;
+  } finally {
+    client.release();
   }
 }
 

@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { apiRequest } from "../api/client.js";
-import PageHeader from "../components/PageHeader.jsx";
+import { useAuth } from "../auth/AuthContext.jsx";
+import Button from "../components/Button.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { formatStatus } from "../constants/productStatuses.js";
-import { useAuth } from "../auth/AuthContext.jsx";
 
 const today = new Date().toISOString().slice(0, 10);
 
@@ -25,17 +25,17 @@ function SalesPage() {
   const [invoices, setInvoices] = useState([]);
   const [selected, setSelected] = useState([]);
   const [lineValues, setLineValues] = useState({});
-  const [filters, setFilters] = useState({ search: "", category: "", product_type: "" });
+  const [filters, setFilters] = useState({ search: "" });
   const [sale, setSale] = useState(blankSale);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [activeTab, setActiveTab] = useState("pick"); // "pick" | "compose"
 
   async function loadSalesData() {
     setIsLoading(true);
     setError("");
-
     try {
       const [productsData, invoicesData] = await Promise.all([
         apiRequest("/api/products?current_status=IN_STOCK"),
@@ -50,16 +50,12 @@ function SalesPage() {
     }
   }
 
-  useEffect(() => {
-    loadSalesData();
-  }, []);
+  useEffect(() => { loadSalesData(); }, []);
 
   const filteredProducts = useMemo(
     () =>
       products.filter((product) => {
-        const query = filters.search.trim().toLowerCase();
-        const category = filters.category.trim().toLowerCase();
-        const type = filters.product_type.trim().toLowerCase();
+        if (!filters.search) return true;
         const haystack = [
           product.product_code,
           product.product_type_code,
@@ -68,42 +64,23 @@ function SalesPage() {
           product.size_label,
           product.paint_color,
           product.manufacturing_batch,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-
-        return (
-          (!query || haystack.includes(query)) &&
-          (!category ||
-            product.product_type_category?.toLowerCase().includes(category) ||
-            product.product_type_name?.toLowerCase().includes(category)) &&
-          (!type || product.product_type_code?.toLowerCase().includes(type))
-        );
+        ].filter(Boolean).join(" ").toLowerCase();
+        return haystack.includes(filters.search.toLowerCase());
       }),
-    [filters, products]
+    [filters.search, products]
   );
 
   const totals = useMemo(() => {
-    const subtotal = selected.reduce((sum, product) => {
-      const values = lineValues[product.id] ?? {};
-      return sum + Number(values.quantity ?? 1) * Number(values.unit_price ?? 0);
-    }, 0);
-    const lineDiscount = selected.reduce((sum, product) => sum + Number(lineValues[product.id]?.discount_amount ?? 0), 0);
+    const subtotal = selected.reduce(
+      (sum, product) =>
+        sum + Number(lineValues[product.id]?.quantity ?? 1) * Number(lineValues[product.id]?.unit_price ?? 0),
+      0
+    );
+    const lineDiscount = selected.reduce((sum, p) => sum + Number(lineValues[p.id]?.discount_amount ?? 0), 0);
     const invoiceDiscount = Number(sale.discount_amount || 0);
     const discount = lineDiscount + invoiceDiscount;
-
-    return {
-      subtotal,
-      discount,
-      total: Math.max(subtotal - discount, 0),
-    };
+    return { subtotal, discount, total: Math.max(subtotal - discount, 0) };
   }, [lineValues, sale.discount_amount, selected]);
-
-  function updateFilters(event) {
-    const { name, value } = event.target;
-    setFilters((current) => ({ ...current, [name]: value }));
-  }
 
   function updateSale(event) {
     const { name, value } = event.target;
@@ -115,7 +92,6 @@ function SalesPage() {
       if (current.some((item) => item.id === product.id)) {
         return current.filter((item) => item.id !== product.id);
       }
-
       setLineValues((values) => ({
         ...values,
         [product.id]: values[product.id] ?? { quantity: 1, unit_price: "", discount_amount: "" },
@@ -138,14 +114,11 @@ function SalesPage() {
     event.preventDefault();
     setError("");
     setMessage("");
-
     if (!selected.length) {
       setError("Select at least one in-stock product.");
       return;
     }
-
     setIsSubmitting(true);
-
     try {
       const data = await apiRequest("/api/sales/invoices", {
         method: "POST",
@@ -170,172 +143,285 @@ function SalesPage() {
   }
 
   return (
-    <section className="page-section commerce-page">
-      <PageHeader eyebrow="Sales" icon="sales" title="Sales" />
+    <section className="page-section sales-workspace-page animate-fade-in" style={{ paddingBottom: "24px" }}>
+      {/* ── Header ── */}
+      <div className="page-header-v3" style={{ "--section-color": "var(--clr-sales)" }}>
+        <div className="page-header-v3-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" /><rect x="1" y="7" width="22" height="13" rx="2" />
+          </svg>
+        </div>
+        <div>
+          <p className="page-header-v3-eyebrow">Sales</p>
+          <h1 className="page-header-v3-title">Sales Workspace</h1>
+        </div>
+      </div>
 
       {message ? <p className="success-message">{message}</p> : null}
       {error ? <p className="error-message">{error}</p> : null}
 
-      <section className="commerce-filter-panel">
-        <div>
-          <p className="eyebrow">In Stock</p>
-          <h3>Select products for sale</h3>
-        </div>
-        <div className="commerce-filter-grid">
-          <label>
-            Product / SKU search
-            <input name="search" onChange={updateFilters} placeholder="Code, product name, size, color..." value={filters.search} />
-          </label>
-          <label>
-            Category
-            <input name="category" onChange={updateFilters} placeholder="Almirah, cabinet..." value={filters.category} />
-          </label>
-          <label>
-            Type code
-            <input className="technical-input" name="product_type" onChange={updateFilters} placeholder="ALM2D" value={filters.product_type} />
-          </label>
-        </div>
-      </section>
+      {/* ── Tab switcher ── */}
+      <div style={{ display: "flex", gap: "6px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "14px", padding: "4px" }}>
+        <button
+          onClick={() => setActiveTab("pick")}
+          style={{
+            flex: 1, padding: "8px", borderRadius: "10px", border: "none", fontSize: "0.84rem", fontWeight: "700", cursor: "pointer",
+            background: activeTab === "pick" ? "var(--clr-sales-soft)" : "transparent",
+            color: activeTab === "pick" ? "var(--clr-sales)" : "var(--muted)",
+            transition: "all 0.2s ease",
+          }}
+          type="button"
+        >
+          Pick Products {products.length > 0 && <span style={{ opacity: 0.7 }}>({filteredProducts.length})</span>}
+        </button>
+        <button
+          onClick={() => setActiveTab("compose")}
+          style={{
+            flex: 1, padding: "8px", borderRadius: "10px", border: "none", fontSize: "0.84rem", fontWeight: "700", cursor: "pointer",
+            background: activeTab === "compose" ? "var(--clr-sales-soft)" : "transparent",
+            color: activeTab === "compose" ? "var(--clr-sales)" : "var(--muted)",
+            transition: "all 0.2s ease",
+          }}
+          type="button"
+        >
+          Compose Invoice {selected.length > 0 && <span style={{ fontWeight: "800" }}>({selected.length})</span>}
+        </button>
+      </div>
 
-      {isLoading ? (
-        <p className="state-card">Loading sales data...</p>
-      ) : (
-        <div className="commerce-layout">
-          <section className="commerce-list-panel">
-            <div className="panel-header">
-              <h3>Available stock</h3>
-              <span className="admin-count">{filteredProducts.length} in stock</span>
+      {/* ── Tab: Pick Products ── */}
+      {activeTab === "pick" && (
+        <div>
+          <div style={{ marginBottom: "12px" }}>
+            <input
+              name="search"
+              onChange={(e) => setFilters({ search: e.target.value })}
+              placeholder="Search by code, size, color, type..."
+              value={filters.search}
+              style={{ borderRadius: "12px" }}
+            />
+          </div>
+
+          {isLoading ? (
+            <div style={{ display: "grid", gap: "10px" }}>
+              {[1, 2, 3, 4].map((i) => <div key={i} className="skeleton-box" style={{ height: "90px" }} />)}
             </div>
-            <div className="commerce-product-grid">
-              {!filteredProducts.length ? <p className="empty-state">No in-stock products match this search.</p> : null}
+          ) : (
+            <div style={{ display: "grid", gap: "8px" }}>
+              {!filteredProducts.length ? (
+                <p className="empty-state">No in-stock products match this search.</p>
+              ) : null}
               {filteredProducts.map((product) => {
                 const isSelected = selected.some((item) => item.id === product.id);
                 return (
                   <button
-                    className={`commerce-product-card${isSelected ? " selected" : ""}`}
+                    className={`commerce-product-card-v2${isSelected ? " selected" : ""}`}
                     key={product.id}
                     onClick={() => toggleProduct(product)}
                     type="button"
+                    style={{ width: "100%", cursor: "pointer", font: "inherit" }}
                   >
-                    <div>
-                      <code>{product.product_code}</code>
-                      <StatusBadge status={product.current_status}>{formatStatus(product.current_status)}</StatusBadge>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
+                      <code style={{ fontSize: "0.75rem" }}>{product.product_code}</code>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        {isSelected && (
+                          <span style={{ background: "var(--clr-sales)", color: "#fff", borderRadius: "6px", padding: "2px 8px", fontSize: "0.7rem", fontWeight: "700" }}>
+                            ✓ Selected
+                          </span>
+                        )}
+                        <StatusBadge status={product.current_status}>{formatStatus(product.current_status)}</StatusBadge>
+                      </div>
                     </div>
-                    <h3>{product.product_type_name}</h3>
-                    <dl>
-                      <div>
-                        <dt>Size</dt>
-                        <dd>{product.size_label || `${product.width} x ${product.height}`}</dd>
-                      </div>
-                      <div>
-                        <dt>Color</dt>
-                        <dd>{product.paint_color || "Unpainted"}</dd>
-                      </div>
-                    </dl>
+                    <strong style={{ display: "block", fontSize: "0.9rem", color: "var(--text-strong)", marginBottom: "4px" }}>
+                      {product.product_type_name}
+                    </strong>
+                    <div style={{ fontSize: "0.72rem", color: "var(--muted)", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                      <span>{product.size_label || `${product.width} × ${product.height}`}</span>
+                      <span>·</span>
+                      <span>{product.paint_color || "Unpainted"}</span>
+                    </div>
                   </button>
                 );
               })}
             </div>
-          </section>
+          )}
 
-          <section className="commerce-form-panel">
-            <div className="panel-header">
-              <h3>Invoice details</h3>
-              <span className="admin-count">{selected.length} selected</span>
+          {selected.length > 0 && (
+            <div style={{ marginTop: "16px", position: "sticky", bottom: "76px" }}>
+              <button
+                onClick={() => setActiveTab("compose")}
+                className="button primary"
+                style={{ width: "100%", fontSize: "0.95rem" }}
+                type="button"
+              >
+                Compose Invoice ({selected.length} item{selected.length !== 1 ? "s" : ""}) →
+              </button>
             </div>
-            <form className="commerce-form" onSubmit={createInvoice}>
+          )}
+        </div>
+      )}
+
+      {/* ── Tab: Compose Invoice ── */}
+      {activeTab === "compose" && (
+        <form className="commerce-form-v2" onSubmit={createInvoice} style={{ display: "grid", gap: "14px" }}>
+          {!selected.length ? (
+            <div className="workspace-card">
+              <p className="empty-state">
+                Go to "Pick Products" tab to select items for this invoice.
+              </p>
+              <button
+                onClick={() => setActiveTab("pick")}
+                className="button secondary"
+                style={{ width: "100%", marginTop: "8px" }}
+                type="button"
+              >
+                ← Pick Products
+              </button>
+            </div>
+          ) : null}
+
+          {/* Customer details */}
+          <div className="workspace-card">
+            <div className="panel-header">
+              <div>
+                <p className="eyebrow">Customer</p>
+                <h3>Bill to</h3>
+              </div>
+            </div>
+            <div style={{ display: "grid", gap: "12px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                <label>
+                  Name
+                  <input name="customer_name" onChange={updateSale} value={sale.customer_name} />
+                </label>
+                <label>
+                  Mobile
+                  <input name="customer_mobile" onChange={updateSale} value={sale.customer_mobile} />
+                </label>
+              </div>
               <label>
-                Customer name
-                <input name="customer_name" onChange={updateSale} value={sale.customer_name} />
-              </label>
-              <label>
-                Customer mobile
-                <input name="customer_mobile" onChange={updateSale} value={sale.customer_mobile} />
-              </label>
-              <label>
-                Sale date
-                <input name="sale_date" onChange={updateSale} type="date" value={sale.sale_date} />
-              </label>
-              <label>
-                Invoice discount
-                <input name="discount_amount" onChange={updateSale} type="number" value={sale.discount_amount} />
-              </label>
-              <label className="wide-field">
-                Customer location
+                Location
                 <textarea name="customer_location" onChange={updateSale} rows="2" value={sale.customer_location} />
               </label>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                <label>
+                  Sale date
+                  <input name="sale_date" onChange={updateSale} type="date" value={sale.sale_date} />
+                </label>
+                <label>
+                  Invoice discount (₹)
+                  <input name="discount_amount" onChange={updateSale} type="number" value={sale.discount_amount} />
+                </label>
+              </div>
+            </div>
+          </div>
 
-              <div className="selected-lines wide-field">
+          {/* Selected items */}
+          {selected.length > 0 && (
+            <div className="workspace-card">
+              <div className="panel-header">
+                <div>
+                  <p className="eyebrow">Line Items</p>
+                  <h3>Selected products</h3>
+                </div>
+                <span className="admin-count">{selected.length}</span>
+              </div>
+              <div style={{ display: "grid", gap: "12px" }}>
                 {selected.map((product) => (
-                  <article className="selected-line" key={product.id}>
-                    <div>
-                      <code>{product.product_code}</code>
-                      <strong>{product.product_type_name}</strong>
+                  <article className="selected-line-v2" key={product.id}>
+                    <div className="selected-line-head">
+                      <div>
+                        <code style={{ fontSize: "0.75rem" }}>{product.product_code}</code>
+                        <strong style={{ display: "block", fontSize: "0.88rem", color: "var(--text-strong)" }}>
+                          {product.product_type_name}
+                        </strong>
+                      </div>
+                      <button className="inline-link-button" onClick={() => toggleProduct(product)} type="button">
+                        Remove
+                      </button>
                     </div>
-                    <label>
-                      Qty
-                      <input
-                        min="1"
-                        onChange={(event) => updateLine(product.id, "quantity", event.target.value)}
-                        type="number"
-                        value={lineValues[product.id]?.quantity ?? 1}
-                      />
-                    </label>
-                    <label>
-                      Price
-                      <input
-                        min="0"
-                        onChange={(event) => updateLine(product.id, "unit_price", event.target.value)}
-                        type="number"
-                        value={lineValues[product.id]?.unit_price ?? ""}
-                      />
-                    </label>
-                    <label>
-                      Discount
-                      <input
-                        min="0"
-                        onChange={(event) => updateLine(product.id, "discount_amount", event.target.value)}
-                        type="number"
-                        value={lineValues[product.id]?.discount_amount ?? ""}
-                      />
-                    </label>
+                    <div className="selected-line-grid">
+                      <label>
+                        Qty
+                        <input
+                          min="1"
+                          onChange={(e) => updateLine(product.id, "quantity", e.target.value)}
+                          type="number"
+                          value={lineValues[product.id]?.quantity ?? 1}
+                        />
+                      </label>
+                      <label>
+                        Unit price (₹)
+                        <input
+                          min="0"
+                          onChange={(e) => updateLine(product.id, "unit_price", e.target.value)}
+                          type="number"
+                          value={lineValues[product.id]?.unit_price ?? ""}
+                          placeholder="0"
+                        />
+                      </label>
+                      <label>
+                        Discount (₹)
+                        <input
+                          min="0"
+                          onChange={(e) => updateLine(product.id, "discount_amount", e.target.value)}
+                          type="number"
+                          value={lineValues[product.id]?.discount_amount ?? ""}
+                          placeholder="0"
+                        />
+                      </label>
+                    </div>
                   </article>
                 ))}
               </div>
 
-              <div className="invoice-totals wide-field">
-                <span>Subtotal: Rs. {totals.subtotal.toFixed(2)}</span>
-                <span>Discount: Rs. {totals.discount.toFixed(2)}</span>
-                <strong>Total: Rs. {totals.total.toFixed(2)}</strong>
+              {/* Totals */}
+              <div className="invoice-totals-v2">
+                <span>Subtotal: ₹{totals.subtotal.toFixed(2)}</span>
+                <span>Discount: ₹{totals.discount.toFixed(2)}</span>
+                <strong>Total: ₹{totals.total.toFixed(2)}</strong>
               </div>
+            </div>
+          )}
 
-              <label className="wide-field">
-                Remarks
-                <textarea name="remarks" onChange={updateSale} rows="2" value={sale.remarks} />
-              </label>
-              <button className="button primary wide-field" disabled={!canWrite || isSubmitting} type="submit">
-                {isSubmitting ? "Generating..." : "Generate Sales Invoice"}
-              </button>
-            </form>
-          </section>
-        </div>
+          {/* Remarks */}
+          <label>
+            Remarks (optional)
+            <textarea name="remarks" onChange={updateSale} rows="2" value={sale.remarks} />
+          </label>
+
+          <Button className="wide-field" disabled={!canWrite || isSubmitting} tone="primary" type="submit">
+            {isSubmitting ? "Generating..." : "Generate Invoice →"}
+          </Button>
+        </form>
       )}
 
-      <section className="commerce-list-panel">
-        <div className="panel-header">
-          <h3>Recent sales invoices</h3>
+      {/* ── Recent Invoices ── */}
+      {invoices.length > 0 && (
+        <div className="workspace-card">
+          <div className="panel-header">
+            <div>
+              <p className="eyebrow">History</p>
+              <h3>Recent invoices</h3>
+            </div>
+            <span className="admin-count">{invoices.length}</span>
+          </div>
+          <div>
+            {invoices.map((invoice) => (
+              <Link className="invoice-row-v2" key={invoice.id} to={`/sales/invoices/${invoice.id}`}>
+                <div>
+                  <code style={{ fontSize: "0.78rem" }}>{invoice.invoice_number}</code>
+                  <strong style={{ display: "block", fontSize: "0.88rem", color: "var(--text-strong)", marginTop: "2px" }}>
+                    {invoice.customer_name || "Walk-in customer"}
+                  </strong>
+                </div>
+                <strong style={{ color: "var(--clr-sales)", fontFamily: "var(--mono)", fontSize: "0.95rem" }}>
+                  ₹{Number(invoice.total_amount).toFixed(2)}
+                </strong>
+              </Link>
+            ))}
+          </div>
         </div>
-        <div className="invoice-list">
-          {!invoices.length ? <p className="empty-state">No sales invoices yet.</p> : null}
-          {invoices.map((invoice) => (
-            <Link className="invoice-row" key={invoice.id} to={`/sales/invoices/${invoice.id}`}>
-              <code>{invoice.invoice_number}</code>
-              <span>{invoice.customer_name || "Walk-in customer"}</span>
-              <strong>Rs. {Number(invoice.total_amount).toFixed(2)}</strong>
-            </Link>
-          ))}
-        </div>
-      </section>
+      )}
     </section>
   );
 }

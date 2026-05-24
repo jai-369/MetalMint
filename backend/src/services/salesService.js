@@ -1,5 +1,6 @@
 import { pool } from "../db/pool.js";
 import { badRequest, notFound } from "../utils/httpError.js";
+import { CODE_SCOPES, reserveDailyCode } from "../utils/shortCode.js";
 
 function normalizeOptionalString(value) {
   if (value === undefined) {
@@ -7,12 +8,6 @@ function normalizeOptionalString(value) {
   }
 
   return value?.trim() || null;
-}
-
-function buildInvoiceNumber() {
-  const stamp = new Date().toISOString().slice(2, 10).replaceAll("-", "");
-  const suffix = Math.random().toString(36).slice(2, 7).toUpperCase();
-  return `MM-SALE-${stamp}-${suffix}`;
 }
 
 function toNumber(value) {
@@ -132,7 +127,11 @@ export async function createSalesInvoice(input, userId) {
     }
 
     const productById = new Map(productResult.rows.map((product) => [product.id, product]));
-    const invoiceNumber = buildInvoiceNumber();
+    const saleDate = input.sale_date || new Date();
+    const invoiceNumber = await reserveDailyCode(client, {
+      scope: CODE_SCOPES.SALES_INVOICE,
+      dateValue: saleDate,
+    });
     const lineItems = selectedItems.map((item) => {
       const product = productById.get(item.manufactured_product_id);
 

@@ -13,6 +13,7 @@ import {
 } from "../services/paintingService.js";
 import {
   createManufacturedProduct,
+  createManufacturedProductsBatch,
   getDashboardStats,
   getManufacturedProductByCode,
   getManufacturedProductById,
@@ -58,8 +59,18 @@ const createProductSchema = z.object({
   manufacturing_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Manufacturing date must use YYYY-MM-DD format."),
   manufacturing_batch: optionalText(80),
   manufactured_by: optionalText(120),
+  manufactured_by_ids: z.array(z.string().uuid()).optional().default([]),
+  painted_by_ids: z.array(z.string().uuid()).optional().default([]),
+  doors: z.enum(["2-Door", "4-Door"]).optional().default("2-Door"),
+  weight_class: z.enum(["Lightweight", "Heavy"]).optional().default("Heavy"),
+  is_custom: z.boolean().optional().default(false),
+  paint_color: optionalText(80),
   factory_location: optionalText(120),
   remarks: optionalText(1000),
+});
+
+const createProductBatchSchema = z.object({
+  products: z.array(createProductSchema).min(1, "Add at least one product row.").max(100, "Too many products in one batch."),
 });
 
 const updateProductSchema = z
@@ -115,6 +126,7 @@ const paintingStatusSchema = z.enum(["PENDING", "PAINTED", "REPAINT_REQUIRED"]);
 
 const paintingRecordSchema = z.object({
   painted_by: optionalText(120),
+  painted_by_ids: z.array(z.string().uuid()).optional().default([]),
   paint_color: optionalText(80),
   paint_brand: optionalText(120),
   paint_batch_number: optionalText(80),
@@ -188,6 +200,19 @@ router.post("/", requireStaffOrAdmin, validateBody(createProductSchema), async (
     response.status(201).json({
       status: "ok",
       product,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/batch", requireStaffOrAdmin, validateBody(createProductBatchSchema), async (request, response, next) => {
+  try {
+    const products = await createManufacturedProductsBatch(request.body.products, request.user.id);
+
+    response.status(201).json({
+      status: "ok",
+      products,
     });
   } catch (error) {
     next(error);

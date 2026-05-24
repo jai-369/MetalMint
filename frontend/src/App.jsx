@@ -7,7 +7,6 @@ import DashboardPage from "./pages/DashboardPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import MorePage from "./pages/MorePage.jsx";
 import ProductDetailPage from "./pages/ProductDetailPage.jsx";
-import ProductSearchPage from "./pages/ProductSearchPage.jsx";
 import ProductsPage from "./pages/ProductsPage.jsx";
 import QrLabelPage from "./pages/QrLabelPage.jsx";
 import QrRedirectPage from "./pages/QrRedirectPage.jsx";
@@ -17,6 +16,7 @@ import ScanSearchPage from "./pages/ScanSearchPage.jsx";
 import SalesInvoicePage from "./pages/SalesInvoicePage.jsx";
 import SalesPage from "./pages/SalesPage.jsx";
 import StockPage from "./pages/StockPage.jsx";
+import WorkersPage from "./pages/WorkersPage.jsx";
 
 function App() {
   return (
@@ -48,7 +48,7 @@ function App() {
       >
         <Route index element={<DashboardPage />} />
         <Route path="products" element={<ProductsPage />} />
-        <Route path="products/search" element={<ProductSearchPage />} />
+        <Route path="products/search" element={<Navigate replace to="/stock" />} />
         <Route path="products/:id" element={<ProductDetailPage />} />
         <Route path="scan" element={<ScanSearchPage />} />
         <Route path="stock" element={<StockPage />} />
@@ -57,6 +57,7 @@ function App() {
         <Route path="repairs" element={<RepairsPage />} />
         <Route path="repairs/:id" element={<RepairInvoicePage />} />
         <Route path="more" element={<MorePage />} />
+        <Route path="workers" element={<WorkersPage />} />
         <Route
           path="admin/product-types"
           element={

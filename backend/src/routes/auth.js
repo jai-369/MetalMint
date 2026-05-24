@@ -34,6 +34,7 @@ router.post("/login", loginLimiter, validateBody(loginSchema), async (request, r
     response.json({
       status: "ok",
       user,
+      token,
     });
   } catch (error) {
     next(error);

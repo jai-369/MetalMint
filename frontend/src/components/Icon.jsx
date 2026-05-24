@@ -82,6 +82,11 @@ const iconPaths = {
     </>
   ),
   arrowRight: <path d="M5 12h14M13 6.5 19 12l-6 5.5" />,
+  print: (
+    <>
+      <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z" />
+    </>
+  ),
   filter: (
     <>
       <path d="M4.5 6h15M7.5 12h9M10.5 18h3" />

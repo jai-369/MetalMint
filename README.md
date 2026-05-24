@@ -240,19 +240,20 @@ GET    /api/stock/summary
 
 ## Product Code Format
 
-MetalMint generates permanent product codes as:
+MetalMint generates short daily codes as:
 
 ```text
-PREFIX-TYPE-SIZE-YYMM-SERIAL
+XDDMMYNN
 ```
 
 Example:
 
 ```text
-MM-ALM2D-3660-2605-0001
+P2405601
+I2405601
 ```
 
-Paint color is stored in painting records and is not part of the permanent product code.
+`P` is for products, `I` is for sales invoices, and `R` is for repair invoices. The digits are `DDMMYNN`: day, month, last year digit, and that day's running number. The sequence resets every day for each type.
 
 ## QR Labels
 

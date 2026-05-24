@@ -6,6 +6,7 @@ import helmet from "helmet";
 import adminUsersRouter from "./routes/adminUsers.js";
 import authRouter from "./routes/auth.js";
 import dbCheckRouter from "./routes/dbCheck.js";
+import employeesRouter from "./routes/employees.js";
 import healthRouter from "./routes/health.js";
 import productTypesRouter from "./routes/productTypes.js";
 import productsRouter from "./routes/products.js";
@@ -20,7 +21,15 @@ const corsOrigin = process.env.CORS_ORIGIN ?? "http://localhost:5173";
 app.use(helmet());
 app.use(
   cors({
-    origin: corsOrigin,
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      const isLocal = /^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$/.test(origin);
+      if (isLocal || origin === corsOrigin) {
+        callback(null, true);
+      } else {
+        callback(null, false);
+      }
+    },
     credentials: true,
   })
 );
@@ -31,6 +40,7 @@ app.use("/api/auth", authRouter);
 app.use("/api/admin", adminUsersRouter);
 app.use("/api/product-types", productTypesRouter);
 app.use("/api/products", productsRouter);
+app.use("/api/employees", employeesRouter);
 app.use("/api/sales", salesRouter);
 app.use("/api/repairs", repairsRouter);
 app.use("/api/stock", stockRouter);

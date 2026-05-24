@@ -116,7 +116,7 @@ function ProductSearchPage() {
               className="technical-input"
               name="quickCode"
               onChange={(event) => setQuickCode(event.target.value.toUpperCase())}
-              placeholder="MM-ALM2D-3660-2605-0001"
+              placeholder="P2405601"
               required
               value={quickCode}
             />

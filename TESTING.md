@@ -55,7 +55,7 @@ Use this checklist before deployment. Start with a fresh local database when pos
 - [ ] Product type dropdown shows only active product types.
 - [ ] Width, height, depth, size label, material gauge, manufacturing date, batch, manufactured by, factory location, and remarks save correctly.
 - [ ] New product status is `PAINTING_PENDING`.
-- [ ] Product code is generated as `PREFIX-TYPE-SIZE-YYMM-SERIAL`.
+- [ ] Product code is generated as `PDDMMYNN` and resets daily.
 - [ ] Product code is unique.
 - [ ] Product code does not include paint color.
 - [ ] Product code remains unchanged after edits.

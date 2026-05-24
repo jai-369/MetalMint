@@ -1,7 +1,6 @@
 import { pool } from "../db/pool.js";
 import { badRequest, notFound } from "../utils/httpError.js";
-
-const companyPrefix = (process.env.PRODUCT_CODE_PREFIX ?? "MM").trim().toUpperCase();
+import { CODE_SCOPES, reserveDailyCode } from "../utils/shortCode.js";
 
 function getQrTargetUrl(productCode) {
   const qrPath = `/qr/${encodeURIComponent(productCode)}`;
@@ -43,10 +42,20 @@ const productSelect = `
   mp.factory_location,
   mp.current_status,
   mp.remarks,
+  mp.doors,
+  mp.weight_class,
+  mp.is_custom,
+  (
+    SELECT coalesce(array_to_json(array_agg(json_build_object('id', e.id, 'name', e.name))), '[]'::json)
+    FROM product_manufactured_by pmb
+    JOIN employees e ON e.id = pmb.employee_id
+    WHERE pmb.manufactured_product_id = mp.id
+  ) AS manufacturers,
   latest_paint.paint_color,
   latest_paint.painted_by,
   latest_paint.painting_status,
   latest_paint.painting_date,
+  latest_paint.painters,
   latest_dispatch.customer_name,
   latest_dispatch.customer_mobile,
   latest_dispatch.invoice_number,
@@ -77,30 +86,6 @@ function normalizeProductInput(input) {
   };
 }
 
-function dimensionToCode(value) {
-  const numberValue = Number(value);
-
-  if (!Number.isFinite(numberValue) || numberValue <= 0) {
-    throw badRequest("Width and height must be positive numbers.");
-  }
-
-  return numberValue.toFixed(2).replace(/\.?0+$/, "").replace(/\./g, "");
-}
-
-function getYearMonthCode(dateValue) {
-  const match = String(dateValue).match(/^(\d{4})-(\d{2})-\d{2}$/);
-
-  if (!match) {
-    throw badRequest("Manufacturing date must use YYYY-MM-DD format.");
-  }
-
-  return `${match[1].slice(2)}${match[2]}`;
-}
-
-function buildSizeCode(width, height) {
-  return `${dimensionToCode(width)}${dimensionToCode(height)}`;
-}
-
 async function getProductTypeForCreation(client, productTypeId) {
   const result = await client.query(
     `
@@ -119,25 +104,6 @@ async function getProductTypeForCreation(client, productTypeId) {
   return result.rows[0];
 }
 
-async function reserveSerial(client, { productTypeId, sizeCode, yearMonth }) {
-  const result = await client.query(
-    `
-      INSERT INTO product_code_sequences (product_type_id, size_code, year_month, last_serial)
-      VALUES ($1, $2, $3, 1)
-      ON CONFLICT (product_type_id, size_code, year_month)
-      DO UPDATE SET last_serial = product_code_sequences.last_serial + 1
-      RETURNING last_serial
-    `,
-    [productTypeId, sizeCode, yearMonth]
-  );
-
-  return result.rows[0].last_serial;
-}
-
-function buildProductCode({ productTypeCode, sizeCode, yearMonth, serial }) {
-  return `${companyPrefix}-${productTypeCode}-${sizeCode}-${yearMonth}-${String(serial).padStart(4, "0")}`;
-}
-
 function baseProductQuery(whereClause) {
   return `
     SELECT ${productSelect}
@@ -145,7 +111,17 @@ function baseProductQuery(whereClause) {
     JOIN product_types pt ON pt.id = mp.product_type_id
     LEFT JOIN users creator ON creator.id = mp.created_by
     LEFT JOIN LATERAL (
-      SELECT paint_color, painted_by, painting_status, painting_date
+      SELECT 
+        pr.paint_color, 
+        pr.painted_by, 
+        pr.painting_status, 
+        pr.painting_date,
+        (
+          SELECT coalesce(array_to_json(array_agg(json_build_object('id', e.id, 'name', e.name))), '[]'::json)
+          FROM painting_painted_by ppb
+          JOIN employees e ON e.id = ppb.employee_id
+          WHERE ppb.painting_record_id = pr.id
+        ) AS painters
       FROM painting_records pr
       WHERE pr.manufactured_product_id = mp.id
       ORDER BY pr.created_at DESC
@@ -163,64 +139,153 @@ function baseProductQuery(whereClause) {
 }
 
 export async function createManufacturedProduct(input, userId) {
-  const product = normalizeProductInput(input);
   const client = await pool.connect();
 
   try {
     await client.query("BEGIN");
+    const createdId = await insertManufacturedProduct(client, input, userId);
 
-    const productType = await getProductTypeForCreation(client, product.product_type_id);
-    const sizeCode = buildSizeCode(product.width, product.height);
-    const yearMonth = getYearMonthCode(product.manufacturing_date);
-    const serial = await reserveSerial(client, {
-      productTypeId: product.product_type_id,
-      sizeCode,
-      yearMonth,
-    });
-    const productCode = buildProductCode({
-      productTypeCode: productType.code,
-      sizeCode,
-      yearMonth,
-      serial,
-    });
+    await client.query("COMMIT");
 
-    const insertResult = await client.query(
+    return getManufacturedProductById(createdId);
+  } catch (error) {
+    await client.query("ROLLBACK");
+
+    if (error.code === "23505") {
+      throw badRequest("Generated product code already exists. Please try again.");
+    }
+
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function insertManufacturedProduct(client, input, userId) {
+  const product = normalizeProductInput(input);
+  await getProductTypeForCreation(client, product.product_type_id);
+
+  const doors = product.doors || "2-Door";
+  const weightClass = product.weight_class || "Heavy";
+  const isCustom = !!product.is_custom;
+
+  const productCode = await reserveDailyCode(client, {
+    scope: CODE_SCOPES.PRODUCT,
+    dateValue: product.manufacturing_date,
+  });
+
+  const initialStatus = (product.painted_by_ids && product.painted_by_ids.length > 0) ? "IN_STOCK" : "PAINTING_PENDING";
+
+  const insertResult = await client.query(
+    `
+      INSERT INTO manufactured_products (
+        product_code,
+        product_type_id,
+        width,
+        height,
+        depth,
+        size_label,
+        material_gauge,
+        manufacturing_date,
+        manufacturing_batch,
+        manufactured_by,
+        factory_location,
+        current_status,
+        remarks,
+        created_by,
+        doors,
+        weight_class,
+        is_custom
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+      RETURNING id
+    `,
+    [
+      productCode,
+      product.product_type_id,
+      product.width,
+      product.height,
+      product.depth,
+      product.size_label,
+      product.material_gauge,
+      product.manufacturing_date,
+      product.manufacturing_batch,
+      product.manufactured_by,
+      product.factory_location,
+      initialStatus,
+      product.remarks,
+      userId,
+      doors,
+      weightClass,
+      isCustom,
+    ]
+  );
+
+  const productId = insertResult.rows[0].id;
+
+  await client.query(
+    `
+      INSERT INTO product_history (
+        manufactured_product_id,
+        action_type,
+        old_status,
+        new_status,
+        description,
+        performed_by
+      )
+      VALUES ($1, 'CREATE', NULL, $2, $3, $4)
+    `,
+    [
+      productId,
+      initialStatus,
+      initialStatus === "IN_STOCK"
+        ? "Product created and automatically moved to In Stock (painting completed)"
+        : "Product created and moved to Painting Pending",
+      userId,
+    ]
+  );
+
+  if (product.manufactured_by_ids && Array.isArray(product.manufactured_by_ids)) {
+    for (const employeeId of product.manufactured_by_ids) {
+      await client.query(
+        "INSERT INTO product_manufactured_by (manufactured_product_id, employee_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+        [productId, employeeId]
+      );
+    }
+  }
+
+  if (product.painted_by_ids && Array.isArray(product.painted_by_ids) && product.painted_by_ids.length > 0) {
+    const paintColor = product.paint_color || "Standard";
+    const paintingResult = await client.query(
       `
-        INSERT INTO manufactured_products (
-          product_code,
-          product_type_id,
-          width,
-          height,
-          depth,
-          size_label,
-          material_gauge,
-          manufacturing_date,
-          manufacturing_batch,
-          manufactured_by,
-          factory_location,
-          current_status,
-          remarks,
+        INSERT INTO painting_records (
+          manufactured_product_id,
+          painted_by,
+          paint_color,
+          painting_date,
+          painting_status,
           created_by
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'PAINTING_PENDING', $12, $13)
+        VALUES ($1, $2, $3, $4, 'PAINTED', $5)
         RETURNING id
       `,
       [
-        productCode,
-        product.product_type_id,
-        product.width,
-        product.height,
-        product.depth,
-        product.size_label,
-        product.material_gauge,
+        productId,
+        null,
+        paintColor,
         product.manufacturing_date,
-        product.manufacturing_batch,
-        product.manufactured_by,
-        product.factory_location,
-        product.remarks,
         userId,
       ]
     );
+
+    const paintingRecordId = paintingResult.rows[0].id;
+
+    for (const employeeId of product.painted_by_ids) {
+      await client.query(
+        "INSERT INTO painting_painted_by (painting_record_id, employee_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+        [paintingRecordId, employeeId]
+      );
+    }
 
     await client.query(
       `
@@ -232,23 +297,46 @@ export async function createManufacturedProduct(input, userId) {
           description,
           performed_by
         )
-        VALUES ($1, 'CREATE', NULL, 'PAINTING_PENDING', $2, $3)
+        VALUES ($1, 'PAINTING_ADDED', $2, $2, $3, $4)
       `,
       [
-        insertResult.rows[0].id,
-        "Product created and moved to Painting Pending",
+        productId,
+        initialStatus,
+        `Painting completed by team using color ${paintColor}`,
         userId,
       ]
     );
+  }
+
+  return productId;
+}
+
+export async function createManufacturedProductsBatch(products, userId) {
+  if (!Array.isArray(products) || !products.length) {
+    throw badRequest("Add at least one product row.");
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const createdIds = [];
+
+    for (const product of products) {
+      const createdId = await insertManufacturedProduct(client, product, userId);
+      createdIds.push(createdId);
+    }
 
     await client.query("COMMIT");
 
-    return getManufacturedProductById(insertResult.rows[0].id);
+    const createdProducts = await Promise.all(createdIds.map((id) => getManufacturedProductById(id)));
+    return createdProducts;
   } catch (error) {
     await client.query("ROLLBACK");
 
     if (error.code === "23505") {
-      throw badRequest("Generated product code already exists. Please try again.");
+      throw badRequest("A generated product code conflicted during batch creation. Please try again.");
     }
 
     throw error;

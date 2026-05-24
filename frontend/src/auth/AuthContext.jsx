@@ -28,15 +28,22 @@ export function AuthProvider({ children }) {
       body: JSON.stringify({ email, password }),
     });
 
+    if (data.token) {
+      localStorage.setItem("factorytrack_token", data.token);
+    }
     setUser(data.user);
     return data.user;
   }, []);
 
   const logout = useCallback(async () => {
-    await apiRequest("/api/auth/logout", {
-      method: "POST",
-    });
-
+    try {
+      await apiRequest("/api/auth/logout", {
+        method: "POST",
+      });
+    } catch (e) {
+      // ignore logout fetch failure (e.g. offline)
+    }
+    localStorage.removeItem("factorytrack_token");
     setUser(null);
   }, []);
 

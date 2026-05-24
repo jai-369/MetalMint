@@ -14,6 +14,12 @@ const paintingSelect = `
   pr.painting_status,
   pr.repaint_required,
   pr.remarks,
+  (
+    SELECT coalesce(array_to_json(array_agg(json_build_object('id', e.id, 'name', e.name))), '[]'::json)
+    FROM painting_painted_by ppb
+    JOIN employees e ON e.id = ppb.employee_id
+    WHERE ppb.painting_record_id = pr.id
+  ) AS painters,
   pr.created_by,
   creator.name AS created_by_name,
   pr.created_at,
@@ -142,6 +148,15 @@ export async function addPaintingRecord(productId, input, userId) {
       ]
     );
 
+    if (input.painted_by_ids && Array.isArray(input.painted_by_ids)) {
+      for (const employeeId of input.painted_by_ids) {
+        await client.query(
+          "INSERT INTO painting_painted_by (painting_record_id, employee_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+          [insertResult.rows[0].id, employeeId]
+        );
+      }
+    }
+
     await addHistory(client, {
       productId,
       actionType: "PAINTING_ADDED",
@@ -261,6 +276,16 @@ export async function updatePaintingRecord(productId, paintingRecordId, input, u
         painting.remarks,
       ]
     );
+
+    if (input.painted_by_ids && Array.isArray(input.painted_by_ids)) {
+      await client.query("DELETE FROM painting_painted_by WHERE painting_record_id = $1", [paintingRecordId]);
+      for (const employeeId of input.painted_by_ids) {
+        await client.query(
+          "INSERT INTO painting_painted_by (painting_record_id, employee_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+          [paintingRecordId, employeeId]
+        );
+      }
+    }
 
     const updatedPaintingStatus = updateResult.rows[0].painting_status;
 

@@ -17,6 +17,8 @@ export async function getStockSummary() {
         ) AS size_display,
         mp.width,
         mp.height,
+        mp.doors,
+        mp.weight_class,
         COALESCE(latest_paint.paint_color, 'Unpainted') AS paint_color,
         mp.current_status,
         COUNT(*)::integer AS quantity
@@ -36,9 +38,11 @@ export async function getStockSummary() {
         size_display,
         mp.width,
         mp.height,
+        mp.doors,
+        mp.weight_class,
         paint_color,
         mp.current_status
-      ORDER BY pt.name ASC, size_display ASC, paint_color ASC, mp.current_status ASC
+      ORDER BY pt.name ASC, size_display ASC, mp.doors ASC, mp.weight_class ASC, paint_color ASC, mp.current_status ASC
     `
   );
 
