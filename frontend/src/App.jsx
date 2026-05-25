@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import AppLayout from "./components/AppLayout.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import AdminProductTypesPage from "./pages/AdminProductTypesPage.jsx";
+import AdminPaintColorsPage from "./pages/AdminPaintColorsPage.jsx";
 import AdminUsersPage from "./pages/AdminUsersPage.jsx";
 import DashboardPage from "./pages/DashboardPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
@@ -58,6 +59,14 @@ function App() {
         <Route path="repairs/:id" element={<RepairInvoicePage />} />
         <Route path="more" element={<MorePage />} />
         <Route path="workers" element={<WorkersPage />} />
+        <Route
+          path="admin/paint-colors"
+          element={
+            <ProtectedRoute roles={["admin"]}>
+              <AdminPaintColorsPage />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="admin/product-types"
           element={

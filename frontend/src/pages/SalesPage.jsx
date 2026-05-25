@@ -20,6 +20,7 @@ const blankSale = {
 function SalesPage() {
   const { user } = useAuth();
   const canWrite = user.role === "admin" || user.role === "staff";
+  const canDelete = user.role === "admin";
   const navigate = useNavigate();
   const [products, setProducts] = useState([]);
   const [invoices, setInvoices] = useState([]);
@@ -139,6 +140,35 @@ function SalesPage() {
       setError(requestError.message);
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleDeleteInvoice(invoice) {
+    if (!canDelete) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete invoice ${invoice.invoice_number}? Linked sold products will be returned to stock.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setError("");
+    setMessage("");
+
+    try {
+      await apiRequest(`/api/sales/invoices/${invoice.id}`, {
+        method: "DELETE",
+      });
+      setMessage(`Invoice ${invoice.invoice_number} deleted.`);
+      await loadSalesData();
+      setSelected([]);
+      setLineValues({});
+    } catch (requestError) {
+      setError(requestError.message);
     }
   }
 
@@ -414,9 +444,24 @@ function SalesPage() {
                     {invoice.customer_name || "Walk-in customer"}
                   </strong>
                 </div>
-                <strong style={{ color: "var(--clr-sales)", fontFamily: "var(--mono)", fontSize: "0.95rem" }}>
-                  ₹{Number(invoice.total_amount).toFixed(2)}
-                </strong>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <strong style={{ color: "var(--clr-sales)", fontFamily: "var(--mono)", fontSize: "0.95rem" }}>
+                    ₹{Number(invoice.total_amount).toFixed(2)}
+                  </strong>
+                  {canDelete ? (
+                    <button
+                      className="button small danger"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        handleDeleteInvoice(invoice);
+                      }}
+                      type="button"
+                    >
+                      Delete
+                    </button>
+                  ) : null}
+                </div>
               </Link>
             ))}
           </div>

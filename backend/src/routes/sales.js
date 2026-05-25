@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
-import { requireAuth, requireStaffOrAdmin } from "../middleware/auth.js";
-import { createSalesInvoice, getSalesInvoiceById, listSalesInvoices } from "../services/salesService.js";
+import { requireAdmin, requireAuth, requireStaffOrAdmin } from "../middleware/auth.js";
+import { createSalesInvoice, deleteSalesInvoice, getSalesInvoiceById, listSalesInvoices } from "../services/salesService.js";
 import { badRequest } from "../utils/httpError.js";
 import { validateBody } from "../utils/validation.js";
 
@@ -61,6 +61,19 @@ router.post("/invoices", requireStaffOrAdmin, validateBody(createSalesInvoiceSch
   try {
     const invoice = await createSalesInvoice(request.body, request.user.id);
     response.status(201).json({ status: "ok", invoice });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete("/invoices/:id", requireAdmin, parseInvoiceId, async (request, response, next) => {
+  try {
+    const invoice = await deleteSalesInvoice(request.invoiceId, request.user.id);
+    response.json({
+      status: "ok",
+      message: `Invoice ${invoice.invoice_number} deleted.`,
+      invoice,
+    });
   } catch (error) {
     next(error);
   }

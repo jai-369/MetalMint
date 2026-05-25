@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { apiRequest } from "../api/client.js";
+import { useAuth } from "../auth/AuthContext.jsx";
 import Button from "../components/Button.jsx";
 
 const PREPARED_BY = "MetalMint";
@@ -40,6 +41,9 @@ function formatDateTime(value) {
 
 function SalesInvoicePage() {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const canDelete = user.role === "admin";
   const [invoice, setInvoice] = useState(null);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -62,6 +66,31 @@ function SalesInvoicePage() {
 
     loadInvoice();
   }, [id]);
+
+  async function handleDeleteInvoice() {
+    if (!canDelete || !invoice) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete invoice ${invoice.invoice_number}? Linked sold products will be returned to stock.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setError("");
+
+    try {
+      await apiRequest(`/api/sales/invoices/${invoice.id}`, {
+        method: "DELETE",
+      });
+      navigate("/sales", { replace: true });
+    } catch (requestError) {
+      setError(requestError.message);
+    }
+  }
 
   const items = invoice?.items ?? [];
   const lineCount = items.length;
@@ -126,6 +155,11 @@ function SalesInvoicePage() {
             <Button onClick={() => window.print()} tone="primary" type="button">
               Print {printMode === "thermal" ? "Thermal Bill" : "A4 Invoice"}
             </Button>
+            {canDelete ? (
+              <Button onClick={handleDeleteInvoice} tone="danger" type="button">
+                Delete Invoice
+              </Button>
+            ) : null}
             <Link className="button secondary" to="/sales">
               Back to Sales
             </Link>

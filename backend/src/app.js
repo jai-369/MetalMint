@@ -8,6 +8,7 @@ import authRouter from "./routes/auth.js";
 import dbCheckRouter from "./routes/dbCheck.js";
 import employeesRouter from "./routes/employees.js";
 import healthRouter from "./routes/health.js";
+import paintColorsRouter from "./routes/paintColors.js";
 import productTypesRouter from "./routes/productTypes.js";
 import productsRouter from "./routes/products.js";
 import repairsRouter from "./routes/repairs.js";
@@ -38,6 +39,7 @@ app.use(express.json());
 
 app.use("/api/auth", authRouter);
 app.use("/api/admin", adminUsersRouter);
+app.use("/api/paint-colors", paintColorsRouter);
 app.use("/api/product-types", productTypesRouter);
 app.use("/api/products", productsRouter);
 app.use("/api/employees", employeesRouter);

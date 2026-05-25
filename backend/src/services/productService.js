@@ -713,3 +713,59 @@ export async function updateManufacturedProductStatus(id, newStatus, userId, rem
     client.release();
   }
 }
+
+export async function deleteManufacturedProduct(id) {
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const productResult = await client.query(
+      `
+        SELECT id, product_code, current_status
+        FROM manufactured_products
+        WHERE id = $1
+        FOR UPDATE
+      `,
+      [id]
+    );
+
+    const product = productResult.rows[0];
+
+    if (!product) {
+      throw notFound("Product not found.");
+    }
+
+    const invoiceLinkResult = await client.query(
+      `
+        SELECT si.invoice_number
+        FROM sales_invoice_items sii
+        JOIN sales_invoices si ON si.id = sii.sales_invoice_id
+        WHERE sii.manufactured_product_id = $1
+        LIMIT 1
+      `,
+      [id]
+    );
+
+    if (invoiceLinkResult.rows[0]) {
+      throw badRequest(
+        `This product is linked to sales invoice ${invoiceLinkResult.rows[0].invoice_number}. Delete the invoice first.`
+      );
+    }
+
+    await client.query("DELETE FROM manufactured_products WHERE id = $1", [id]);
+    await client.query("COMMIT");
+
+    return product;
+  } catch (error) {
+    await client.query("ROLLBACK");
+
+    if (error.code === "23503") {
+      throw badRequest("This product is linked to sales data. Delete the related invoice first.");
+    }
+
+    throw error;
+  } finally {
+    client.release();
+  }
+}

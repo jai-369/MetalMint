@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { requireAuth, requireStaffOrAdmin } from "../middleware/auth.js";
+import { requireAdmin, requireAuth, requireStaffOrAdmin } from "../middleware/auth.js";
 import {
   addDispatchRecord,
   listDispatchRecords,
@@ -20,6 +20,7 @@ import {
   getProductStatusCounts,
   listProductHistory,
   listManufacturedProducts,
+  deleteManufacturedProduct,
   updateManufacturedProduct,
   updateManufacturedProductStatus,
 } from "../services/productService.js";
@@ -445,6 +446,20 @@ router.patch(
     }
   }
 );
+
+router.delete("/:id", requireAdmin, parseProductId, async (request, response, next) => {
+  try {
+    const product = await deleteManufacturedProduct(request.productId);
+
+    response.json({
+      status: "ok",
+      message: `Product ${product.product_code} deleted.`,
+      product,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 async function handleStatusUpdate(request, response, next) {
   try {

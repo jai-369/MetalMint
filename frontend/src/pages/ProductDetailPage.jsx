@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { QRCodeCanvas } from "qrcode.react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { apiRequest } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
@@ -101,11 +101,14 @@ function ProductDetailSkeleton() {
 
 function ProductDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const canWrite = user.role === "admin" || user.role === "staff";
+  const canDelete = user.role === "admin";
   const [product, setProduct] = useState(null);
   const [paintingRecords, setPaintingRecords] = useState([]);
   const [dispatchRecords, setDispatchRecords] = useState([]);
+  const [paintColors, setPaintColors] = useState([]);
   const [paintingForm, setPaintingForm] = useState(getBlankPaintingForm);
   const [dispatchForm, setDispatchForm] = useState(blankDispatchForm);
   const [status, setStatus] = useState("");
@@ -124,6 +127,19 @@ function ProductDetailPage() {
       setPrinterConnected(state.connected);
     });
     return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    async function loadPaintColors() {
+      try {
+        const data = await apiRequest("/api/paint-colors");
+        setPaintColors(data.paint_colors || []);
+      } catch (requestError) {
+        console.error("Failed to load paint colors:", requestError);
+      }
+    }
+
+    loadPaintColors();
   }, []);
 
   const handleBlePrint = async () => {
@@ -260,6 +276,32 @@ function ProductDetailPage() {
     }
   }
 
+  async function handleDeleteProduct() {
+    if (!canDelete || !product) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete ${product.product_code}? This removes the manufactured product and related stock history.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setError("");
+    setMessage("");
+
+    try {
+      await apiRequest(`/api/products/${product.id}`, {
+        method: "DELETE",
+      });
+      navigate("/stock", { replace: true });
+    } catch (requestError) {
+      setError(requestError.message);
+    }
+  }
+
   const stages = [
     { num: 1, label: "Built", statuses: ["MANUFACTURED", "PAINTING_PENDING"] },
     { num: 2, label: "Painted", statuses: ["PAINTED"] },
@@ -330,6 +372,16 @@ function ProductDetailPage() {
             {product.product_type_name}
           </h1>
         </div>
+        {canDelete ? (
+          <button
+            className="button danger"
+            onClick={handleDeleteProduct}
+            style={{ minHeight: "34px", padding: "0 12px", flexShrink: 0 }}
+            type="button"
+          >
+            Delete
+          </button>
+        ) : null}
         <StatusBadge status={product.current_status}>{formatStatus(product.current_status)}</StatusBadge>
       </div>
 
@@ -544,7 +596,18 @@ function ProductDetailPage() {
                 </label>
                 <label>
                   Paint color *
-                  <input name="paint_color" onChange={handlePaintingChange} placeholder="Grey, Blue Gloss..." value={paintingForm.paint_color} />
+                  <input
+                    list="detail-paint-colors"
+                    name="paint_color"
+                    onChange={handlePaintingChange}
+                    placeholder="Grey, Blue Gloss..."
+                    value={paintingForm.paint_color}
+                  />
+                  <datalist id="detail-paint-colors">
+                    {paintColors.map((color) => (
+                      <option key={color.id} value={color.name} />
+                    ))}
+                  </datalist>
                 </label>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                   <label>

@@ -242,6 +242,13 @@ function MorePage() {
               <h3>Product Types</h3>
               <p>Maintain the master product catalog.</p>
             </Link>
+            <Link className="utility-card" to="/admin/paint-colors">
+              <div className="utility-card-icon" style={{ background: "rgba(99,102,241,0.1)", color: "var(--primary)", borderColor: "rgba(99,102,241,0.25)" }}>
+                <Icon name="palette" size={18} />
+              </div>
+              <h3>Paint Colors</h3>
+              <p>Manage almirah color presets and combinations.</p>
+            </Link>
             <Link className="utility-card" to="/admin/users">
               <div className="utility-card-icon" style={{ background: "rgba(244,63,94,0.1)", color: "#f43f5e", borderColor: "rgba(244,63,94,0.25)" }}>
                 <Icon name="users" size={18} />

@@ -15,7 +15,7 @@ const sharedDefaults = {
   manufacturing_date: today,
   manufacturing_batch: "",
   factory_location: "",
-  paint_color: "Royal Blue", // Premium default paint color
+  paint_color: "",
 };
 
 const skuDimensions = {
@@ -29,16 +29,6 @@ const skuDimensions = {
   "ALM543015": { width: 30, height: 54, depth: 15, size_label: "54 x 30 x 15" },
   "ALM543415": { width: 34, height: 54, depth: 15, size_label: "54 x 34 x 15" },
 };
-
-const standardPaintColors = [
-  "Royal Blue",
-  "Slate Grey",
-  "Olive Green",
-  "Chocolate Brown",
-  "Standard Grey",
-  "Maroon Red",
-  "Pearly White"
-];
 
 function buildRow(productTypeId = "", firstTypeCode = "") {
   const dims = skuDimensions[firstTypeCode] || { width: "48", height: "74", depth: "19", size_label: "74 x 48 x 19" };
@@ -74,6 +64,7 @@ function ProductsPage() {
   const [products, setProducts] = useState([]);
   const [productTypes, setProductTypes] = useState([]);
   const [employees, setEmployees] = useState([]);
+  const [paintColors, setPaintColors] = useState([]);
   
   const [productionMode, setProductionMode] = useState("single"); // "single" or "batch"
   const [sharedFields, setSharedFields] = useState(sharedDefaults);
@@ -115,6 +106,11 @@ function ProductsPage() {
     }
   }
 
+  async function loadPaintColors() {
+    const data = await apiRequest("/api/paint-colors");
+    setPaintColors(data.paint_colors || []);
+  }
+
   async function loadProductTypes() {
     const data = await apiRequest("/api/product-types");
     setProductTypes(data.product_types);
@@ -151,13 +147,24 @@ function ProductsPage() {
   useEffect(() => {
     async function loadInitialData() {
       try {
-        await Promise.all([loadProductTypes(), loadProducts(), loadEmployees()]);
+        await Promise.all([loadProductTypes(), loadProducts(), loadEmployees(), loadPaintColors()]);
       } catch (requestError) {
         setError(requestError.message);
       }
     }
     loadInitialData();
   }, []);
+
+  useEffect(() => {
+    if (sharedFields.paint_color || !paintColors.length) {
+      return;
+    }
+
+    setSharedFields((current) => ({
+      ...current,
+      paint_color: paintColors[0].name,
+    }));
+  }, [paintColors, sharedFields.paint_color]);
 
   // Filter only active employees for team rosters
   const activeFabricatorsList = useMemo(
@@ -786,16 +793,19 @@ function ProductsPage() {
               {selectedPainters.length > 0 && (
                 <label style={{ animation: "dropdownFade 0.2s ease" }}>
                   Finish Paint Color
-                  <select
+                  <input
+                    list="manufacturing-paint-colors"
                     name="paint_color"
                     onChange={updateSharedField}
+                    placeholder="Royal Blue / Grey Combo"
                     value={sharedFields.paint_color}
                     style={{ minHeight: "44px" }}
-                  >
-                    {standardPaintColors.map((color) => (
-                      <option key={color} value={color}>{color}</option>
+                  />
+                  <datalist id="manufacturing-paint-colors">
+                    {paintColors.map((color) => (
+                      <option key={color.id} value={color.name} />
                     ))}
-                  </select>
+                  </datalist>
                 </label>
               )}
             </div>

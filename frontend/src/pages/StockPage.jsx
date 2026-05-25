@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiRequest } from "../api/client.js";
+import { useAuth } from "../auth/AuthContext.jsx";
 import Button from "../components/Button.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { formatStatus, productStatuses } from "../constants/productStatuses.js";
@@ -13,6 +14,8 @@ const defaultFilters = {
 };
 
 function StockPage() {
+  const { user } = useAuth();
+  const canDelete = user.role === "admin";
   const [summary, setSummary] = useState([]);
   const [products, setProducts] = useState([]);
   const [filters, setFilters] = useState(defaultFilters);
@@ -101,6 +104,31 @@ function StockPage() {
   function resetFilters() {
     setFilters(defaultFilters);
     loadInventory(defaultFilters);
+  }
+
+  async function handleDeleteProduct(product) {
+    if (!canDelete) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete ${product.product_code}? This removes the manufactured product and related stock history.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setError("");
+
+    try {
+      await apiRequest(`/api/products/${product.id}`, {
+        method: "DELETE",
+      });
+      await loadInventory(filters);
+    } catch (requestError) {
+      setError(requestError.message);
+    }
   }
 
   const totalInStock = summary.filter((s) => s.current_status === "IN_STOCK").reduce((sum, s) => sum + s.quantity, 0);
@@ -278,6 +306,19 @@ function StockPage() {
                   <div className="stream-row-side">
                     <span>{product.paint_color || "Unpainted"}</span>
                     <StatusBadge status={product.current_status}>{formatStatus(product.current_status)}</StatusBadge>
+                    {canDelete ? (
+                      <button
+                        className="button small danger"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          handleDeleteProduct(product);
+                        }}
+                        type="button"
+                      >
+                        Delete
+                      </button>
+                    ) : null}
                   </div>
                 </Link>
               ))}
