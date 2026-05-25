@@ -275,23 +275,41 @@ export async function deleteSalesInvoice(id, userId) {
       throw notFound("Sales invoice not found.");
     }
 
-    const itemsResult = await client.query(
+    const invoiceItemsResult = await client.query(
       `
-        SELECT DISTINCT
-          mp.id,
-          mp.product_code,
-          mp.current_status
+        SELECT DISTINCT sii.manufactured_product_id
         FROM sales_invoice_items sii
-        JOIN manufactured_products mp ON mp.id = sii.manufactured_product_id
         WHERE sii.sales_invoice_id = $1
-        FOR UPDATE OF mp
       `,
       [id]
     );
 
+    const productIds = invoiceItemsResult.rows
+      .map((row) => row.manufactured_product_id)
+      .filter(Boolean);
+
+    let restoredProducts = [];
+
+    if (productIds.length) {
+      const itemsResult = await client.query(
+        `
+          SELECT
+            mp.id,
+            mp.product_code,
+            mp.current_status
+          FROM manufactured_products mp
+          WHERE mp.id = ANY($1::uuid[])
+          FOR UPDATE
+        `,
+        [productIds]
+      );
+
+      restoredProducts = itemsResult.rows;
+    }
+
     await client.query("DELETE FROM sales_invoices WHERE id = $1", [id]);
 
-    for (const product of itemsResult.rows) {
+    for (const product of restoredProducts) {
       if (product.current_status !== "IN_STOCK") {
         await client.query("UPDATE manufactured_products SET current_status = 'IN_STOCK' WHERE id = $1", [product.id]);
       }
@@ -321,7 +339,7 @@ export async function deleteSalesInvoice(id, userId) {
 
     return {
       ...invoice,
-      restored_products: itemsResult.rows,
+      restored_products: restoredProducts,
     };
   } catch (error) {
     await client.query("ROLLBACK");
